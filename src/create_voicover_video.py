@@ -23,19 +23,22 @@ def parse_markdown(file_path):
     # Split content into sections based on headers (assuming ## for slide breaks)
     sections = re.split(r'## ', content)
     slides_content = [{'text': section, 'is_code': False} for section in sections[1:]]
-    return slides_content
+    # drop slides
+    new_slides_content, slide_index = [], []
+    for i, section in enumerate(slides_content):
+        if section['text'].find('%-') < 0:
+            new_slides_content.append(section)
+            slide_index.append(i)
+    return new_slides_content, slide_index
 
-def extract_slides_from_pdf(file_path, output_path):
-    input_pdf = pypdf.PdfReader(file_path)
-    img_list = list()
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
-    for i, page in enumerate(input_pdf.pages):
-        tempfile = f"{output_path}/{i:02d}.pdf"
-        page.write_to_stream(tempfile)
-        image = convert_from_path(tempfile)
-        img_list.append(image)
-    return img_list
+def extract_slides_from_pdf(file_path, slide_index=None):
+    slides = convert_from_path(file_path)
+    if slide_index is None:
+        slide_index = list(range(len(slides)))
+    new_slides = list()
+    for s in slides:
+        new_slides.append(np.asarray(s))
+    return [new_slides[i] for i in slide_index]
 
 
 def generate_slide(slide_content):
@@ -56,7 +59,7 @@ def convert_text_to_speech(out_filename, text, lang='en'):
     :param lang: the language for tts-ing the string
     :return:
     """
-    tts = gTTS(text=text, lang=lang)
+    tts = gTTS(text=text, lang=lang, slow=False)
     tts.save(out_filename)
     return out_filename
 
@@ -73,18 +76,15 @@ def compile_video(slides, tts_audios):
 
 if __name__ == "__main__":
 
-    scripts = parse_markdown(TEXT_PATH)
+    scripts, slide_index = parse_markdown(TEXT_PATH)
     audios = list()
     for i, text in enumerate(scripts):
         out = convert_text_to_speech(str(i) + '.mp3', text['text'])
         audios.append(out)
 
     #slides = Presentation(PPTX_PATH)
-    slides = convert_from_path(PDF_PATH)
-    new_slides = list()
-    for s in slides:
-        new_slides.append(np.asarray(s))
+    slides = extract_slides_from_pdf(PDF_PATH, slide_index)
 
-    final_video = compile_video(new_slides, audios)
+    final_video = compile_video(slides, audios)
     output_dir = "outputs"
     final_video.write_videofile(os.path.join(output_dir, "final_video.mp4"), fps=30, codec='libx264')
